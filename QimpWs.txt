@@ -1,0 +1,27 @@
+proc QimpWS {} {
+    package require TclCurl
+    upvar xlateId             xlateId             \
+          xlateInList         xlateInList         \
+          xlateInTypes        xlateInTypes        \
+          xlateInVals         xlateInVals         \
+          xlateOutList        xlateOutList        \
+          xlateOutTypes       xlateOutTypes       \
+          xlateOutVals        xlateOutVals        \
+          xlateConstType      xlateConstType      \
+          xlateConfigFileName xlateConfigFileName
+#Recupere la valeur dans le xlate avant de la soumettre au webservice
+        set inVal [lindex $xlateInVals 0]
+        set url "http://172.17.16.240:3050/passwd/"
+        echo text : $url$inVal
+		
+        set httpBody ""
+        set outVal [::curl::transfer -url $url$inVal -bodyvar httpBody]
+#Permet d'exclure des valeurs ici :  {{"passwd":"(.*?)"}}    
+	  set rExp {{"passwd":"(.*?)"}}
+        set temp 0
+
+    regexp $rExp $httpBody sMatch temp    
+#Soapbody c'est la réponse du webservice     
+    puts "Soap Body: $temp"
+    set xlateOutVals [list $temp]
+}

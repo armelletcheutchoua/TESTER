@@ -1,0 +1,149 @@
+# Wishlist :
+# Option -connecttimeout 10 à mettre sur les connexions curl
+# Trop de redondance dans le code : utiliser un argument stockant la commande curl (et ses options) à pousser
+# Renommer la colonne CSV actif en mode et les résultats en actif ou passif au lieu de 0 et 1.
+# Descriptif de la procédure dans l'entete
+
+#!/opt/cloverleaf/cis6.2/integrator/bin/hcitcl
+######################################################################
+# Name:     xper_check_ftp
+# Purpose:  <description>
+# UPoC type: other
+######################################################################
+
+
+proc xper_check_ftp { debug } {
+echo Debut : [clock format [clock seconds] -format %H:%M:%S]
+# echo [string length $debug]
+    package require base64
+    package require TclCurl
+
+    if {[cequal [string length $debug] 0] } { set debug 0}
+    if { $debug } {
+        puts stdout "Starting in debug mode..."
+    }
+
+    netconfig load
+    # Chargement des process
+    set processes [netconfig get process list]
+    set CSV "Process;Thread;Protocole;Serveur;Actif;Etat;Erreur"
+    foreach process $processes {
+        set threads [netconfig get process connections $process]
+        foreach thread $threads {
+            set destList ""
+            set server ""
+            set directory ""
+            set etat ""
+            set erreur ""
+            set threadconfig [netconfig get connection data $thread]
+            keylget threadconfig PROTOCOL.TYPE protocol
+            if { [cequal $protocol fileset] && [keylget threadconfig PROTOCOL.MODE protoSubType] } { 
+                append protocol "/$protoSubType" 
+            }
+            switch $protocol {
+                "fileset/ftp" - "fileset-sftp" - "fileset-ftps" {
+                    echo "Process : $process"
+                    echo "\tThread : $thread ([clock format [clock seconds] -format %H:%M:%S])"
+                    echo "\tProtocole : $protocol"
+                    keylget threadconfig PROTOCOL.FTPHOST host
+                    keylget threadconfig PROTOCOL.FTPPORT port
+                    set port [string map {"ftp" "21"} $port]
+                    keylget threadconfig PROTOCOL.FTPUSER login
+                    keylget threadconfig PROTOCOL.FTPPASSWD password
+                    keylget threadconfig PROTOCOL.FTPIBDIR directory
+                    if { [cequal $directory ""] } {
+                        keylget threadconfig PROTOCOL.FTPOBDIR directory
+                    } 
+                    # specificite 6.2
+                    set version $::env(HCIVERSION)
+                    if {$version >= 6.2} {
+                        catch {exec hcicrypt decrypt $password} password
+                        set password  [::base64::decode $password]
+                    }
+                    
+                    if {[cequal $protocol "fileset/ftp"]} {
+                            set server "ftp://${login}@${host}:${port}/${directory}/"
+                            echo "\tAdresse : $server"
+                            if {[keylget threadconfig PROTOCOL.ACTIVEMODE]} {
+                            # Mode Actif
+                                echo "\tTest de la connexion en mode actif :"
+                                if { [catch {curl::transfer -ftpport "-" -verbose ${debug} -password ${password} -errorbuffer erreur -url "${server}"} msg] } {
+                                    echo "\t\t=> La connexion ne fonctionne pas : ${erreur}"
+                                    set etat "KO"
+                                } else {
+                                    echo "\t\t=> La connexion fonctionne"
+                                    set etat "OK"
+                                }
+                            } else {
+                            # Mode Passif
+                                echo "\tTest de la connexion en mode passif :"
+                                if { [catch {curl::transfer -verbose ${debug} -password ${password} -errorbuffer erreur -url "${server}"} msg] } {
+                                    echo "\t\t=> La connexion ne fonctionne pas : ${erreur}"
+                                    set etat "KO"
+                                } else {
+                                    echo "\t\t=> La connexion fonctionne"
+                                    set etat "OK"
+                                }
+                            }
+                        } else { if {[cequal $protocol "fileset-sftp"]} {
+                            set server "sftp://${login}@${host}:${port}/${directory}/"
+                            echo "\tAdresse : $server"
+                            if {[keylget threadconfig PROTOCOL.ACTIVEMODE]} {
+                            # Mode Actif
+                                echo "\tTest de la connexion en mode actif :"
+                                if { [catch {curl::transfer -ftpport "-" -usessl all -sslverifyhost 0 -sslverifypeer 0 -verbose ${debug} -password ${password} -timeout 10 -errorbuffer erreur -url "${server}"} msg]} {
+                                    echo "\t\t=> La connexion ne fonctionne pas : ${erreur}"
+                                    set etat "KO"
+                                } else {
+                                    echo "\t\t=> La connexion fonctionne"
+                                    set etat "OK"
+                                }
+                            } else {
+                            # Mode Passif
+                                echo "\tTest de la connexion en mode passif :"
+                                if { [catch {curl::transfer -usessl all -sslverifyhost 0 -sslverifypeer 0 -verbose ${debug} -password ${password} -timeout 10 -errorbuffer erreur -url "${server}"} msg]} {
+                                    echo "\t\t=> La connexion ne fonctionne pas : ${erreur}"
+                                    set etat "KO"
+                                } else {
+                                    echo "\t\t=> La connexion fonctionne"
+                                    set etat "OK"
+                                }
+                            }
+                        } else { if {[cequal $protocol "fileset-ftps"]} {
+                                set server "ftps://${login}@${host}:${port}/${directory}/"
+                                echo "\tAdresse : $server"
+                                if {[keylget threadconfig PROTOCOL.ACTIVEMODE]} {
+                                # Mode Actif
+                                    echo "\tTest de la connexion en mode actif :"
+                                    if { [catch {curl::transfer -ftpport "-" -usessl all -sslverifyhost 0 -sslverifypeer 0 -verbose ${debug} -password ${password} -timeout 10 -errorbuffer erreur -url "${server}"} msg]} {
+                                        echo "\t\t=> La connexion ne fonctionne pas : ${erreur}"
+                                        set etat "KO"
+                                    } else {
+                                        echo "\t\t=> La connexion fonctionne"
+                                        set etat "OK"
+                                    }
+                                } else {
+                                # Mode Passif
+                                    echo "\tTest de la connexion en mode passif :"
+                                    if { [catch {curl::transfer -usessl all -sslverifyhost 0 -sslverifypeer 0 -verbose ${debug} -password ${password} -timeout 10 -errorbuffer erreur -url "${server}"} msg]} {
+                                        echo "\t\t=> La connexion ne fonctionne pas : ${erreur}"
+                                        set etat "KO"
+                                    } else {
+                                        echo "\t\t=> La connexion fonctionne"
+                                        set etat "OK"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    append CSV "\r${process};${thread};${protocol};${server};[keylget threadconfig PROTOCOL.ACTIVEMODE];${etat};${erreur}"
+                    echo "\r\n\t\t-----=====*****=====-----\r\n"
+                }
+            }
+        }
+    }
+    set filename rapport[clock format [clock seconds] -format %Y%m%d].csv
+    write_file ${filename} ${CSV}
+echo Fin : [clock format [clock seconds] -format %H:%M:%S]
+}
+xper_check_ftp $argv
